@@ -1,0 +1,169 @@
+---
+title: "p8105_hw6_sl5010"
+author: "Fiona Li"
+date: "11/30/2021"
+output: github_document
+---
+
+## Problem 1
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(mgcv)
+```
+
+```{r}
+## Load and clean the data for regression analysis
+birthweight = read_csv("Data/birthweight.csv") %>%
+mutate(babysex = as_factor(babysex))%>%
+mutate(frace = as_factor(frace))%>%
+mutate(malform = as_factor(malform))%>%
+mutate(mrace = as_factor(mrace))
+sum(is.na(birthweight))
+head(birthweight) 
+```
+Number of missing data is **0**.
+
+```{r}
+## Propose a regression model for birthweight.
+birthweight %>% 
+  lm(bwt ~ babysex+bhead+blength+delwt+fincome+frace+gaweeks+malform+menarche+mheight+momage+mrace+parity+pnumlbw+pnumsga+ppbmi+ppwt+smoken+wtgain, data = .) %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+at $\alpha = 0.05$, we choose the significant factors: parity, mrace, gaweeks, babysex, bhead, blength and delwt
+
+```{r}
+## get model 1
+model1 = 
+birthweight %>%
+  lm(bwt ~ parity + mrace + gaweeks+babysex+bhead+blength+delwt, data = .)
+modelr::add_residuals(birthweight, model1)
+modelr::add_predictions(birthweight, model1)
+birthweight %>% 
+  modelr::add_residuals(model1) %>%
+  modelr::add_predictions(model1) %>%
+  ggplot(aes(x = pred, y = resid)) + geom_point(alpha = .3) + labs(title = "plot of model residuals against fitted values")
+```
+
+```{r}
+main_effects_model = lm(bwt ~ blength +gaweeks, data = birthweight)
+three_way_interaction_model=  lm(bwt ~ bhead*blength*babysex, data = birthweight)
+```
+
+```{r}
+cv_df =
+  crossv_mc(birthweight, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+cv_df = 
+  cv_df %>% 
+  mutate(
+    model1  = map(train, ~lm(bwt ~ parity + mrace + gaweeks+babysex+bhead+blength+delwt, data = .x)),
+    main_effects_model = map(train, ~lm(bwt ~ blength +gaweeks, data = .x)),
+    three_way_interaction_model = map(train, ~gam(bwt ~ bhead*blength*babysex, data = as_tibble(.x)))) %>% 
+  mutate(
+    rmse_model1 = map2_dbl(model1, test, ~rmse(model = .x, data = .y)),
+    rmse_main_effects_model = map2_dbl(main_effects_model, test, ~rmse(model = .x, data = .y)),
+    rmse_three_way_interaction_model = map2_dbl(three_way_interaction_model, test, ~rmse(model = .x, data = .y)))
+```
+
+```{r}
+## get the plot
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin() + labs(title = "comparison in terms of the cross-validated prediction error")
+```
+## Problem 2
+
+```{r}
+## getting the data
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+```{r}
+## bootstrap
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmin ~ tmax, data = .x)),
+    results = map(models, broom::tidy)) %>% 
+  select(results) %>% 
+  unnest(results) %>% 
+  ggplot(aes(x = estimate)) + geom_density()
+```
+
+```{r}
+ bootstrap_results = 
+ weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) 
+
+bootstrap_results %>% 
+  group_by(term) %>% 
+  summarize(boot_se = sd(estimate))%>% 
+  knitr::kable(digits = 3)
+
+bootstrap_logresults = 
+bootstrap_results %>%  
+  select(term,.id,estimate) %>%
+  pivot_wider(
+    names_from = term,
+    values_from = estimate) %>%
+  rename(Intercept = "(Intercept)") %>%
+  mutate(log_estimate = log(Intercept*tmin))
+
+bootstrap_logresults %>% 
+  summarize(
+    ci_lower = quantile(log_estimate, 0.025), 
+    ci_upper = quantile(log_estimate, 0.975))
+
+bootstrap_logresults %>%
+   ggplot(aes(x = log_estimate)) + geom_density()
+```
+
+**the distribution of estimates**, the $\log(\beta_0\times \beta_1)$ has the distribution that peaks at $\log(\beta_0\times \beta_1)=2.01$, where the density is 17.
+
+```{r}
+ bootstrap_results2 = 
+ weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) 
+
+bootstrap_results2 %>% 
+  summarize(
+    ci_lower = quantile(r.squared, 0.025), 
+    ci_upper = quantile(r.squared, 0.975))
+
+ bootstrap_results2 %>%
+   ggplot(aes(x = r.squared)) + geom_density()
+```
+
+**the distribution of estimates**, the $\hat r ^2$ has the distribution that peaks at $\hat r ^2=0.91$, where the density is around 46.
