@@ -33,7 +33,7 @@ birthweight %>%
   knitr::kable(digits = 3)
 ```
 
-at $\alpha = 0.05$, we choose the significant factors: parity, mrace, gaweeks, babysex, bhead, blength and delwt
+**Describe your modeling process:**at $\alpha = 0.05$, we choose the significant factors: parity, mrace, gaweeks, babysex, bhead, blength and delwt
 
 ```{r}
 ## get model 1
@@ -100,17 +100,6 @@ weather_df =
   select(name, id, everything())
 ```
 
-```{r}
-## bootstrap
-weather_df %>% 
-  modelr::bootstrap(n = 5000) %>% 
-  mutate(
-    models = map(strap, ~ lm(tmin ~ tmax, data = .x)),
-    results = map(models, broom::tidy)) %>% 
-  select(results) %>% 
-  unnest(results) %>% 
-  ggplot(aes(x = estimate)) + geom_density()
-```
 
 ```{r}
  bootstrap_results = 
