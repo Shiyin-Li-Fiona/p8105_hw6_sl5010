@@ -83,6 +83,9 @@ cv_df %>%
   mutate(model = fct_inorder(model)) %>% 
   ggplot(aes(x = model, y = rmse)) + geom_violin() + labs(title = "comparison in terms of the cross-validated prediction error")
 ```
+
+discribe: I found that my model has lowest cross-validated prediction error, which means my model 1 is the most accurate, followed by three_way_interaction_model. main_effects_model is the most inaccurate model.
+
 ## Problem 2
 
 ```{r}
